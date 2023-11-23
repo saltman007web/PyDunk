@@ -486,7 +486,11 @@ def authenticate(username, password, anisette: Anisette):
 
     if "au" in r["Status"] and r["Status"]["au"] == "trustedDeviceSecondaryAuth":
         print("Trusted device authentication required")
-        trusted_second_factor(spd["adsid"], spd["GsIdmsToken"], anisette)
+        which = input("Type SMS to try SMS: ")
+        if which == "SMS":
+            sms_second_factor(spd["adsid"], spd["GsIdmsToken"], anisette)
+        else:
+            trusted_second_factor(spd["adsid"], spd["GsIdmsToken"], anisette)
     elif "au" in r["Status"] and r["Status"]["au"] == "secondaryAuth":
         print("SMS authentication required")
         sms_second_factor(spd["adsid"], spd["GsIdmsToken"], anisette)
