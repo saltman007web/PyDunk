@@ -182,7 +182,6 @@ class GSAuth:
             "o": "complete",
         })
 
-        pp(r)
         if check_error(r):
             raise ValueError("complete Response didn't return successfully")
         
@@ -221,5 +220,4 @@ if __name__ == "__main__":
     password = os.environ.get("APPLE_ID_PASSWORD")
     if not password:
         password = getpass("Password: ")
-    print(password)
     auth.authenticate(username, password)
