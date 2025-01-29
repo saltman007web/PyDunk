@@ -1,4 +1,5 @@
 import hmac
+import urllib3
 from pprint import pp
 import plistlib as plist
 from hashlib import sha256
@@ -8,13 +9,17 @@ from .anisette import Anisette
 
 import requests
 from requests import Session
-from srp._pysrp import User, SHA256, NG_2048
+from srp._pysrp import User, SHA256, NG_2048, rfc5054_enable, no_username_in_x
 from pbkdf2 import PBKDF2
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import CBC
 from cryptography.hazmat.primitives.padding import PKCS7 as padPKCS7
 
+rfc5054_enable()
+no_username_in_x()
+
+urllib3.disable_warnings()
 
 def check_error(r: dict) -> bool:
     status = r["Status"] if "Status" in r else r
