@@ -3,11 +3,12 @@ from locale import getlocale
 from uuid import UUID, uuid4
 from datetime import datetime, UTC
 
-import requests
+from .common import SessionProvider
+
 from requests import Session
 
 
-class Anisette:
+class Anisette(SessionProvider):
     """
     Anisette is required for authenticating with GrandSlam
     as well as communicating with most of Apple's APIs.
@@ -18,10 +19,15 @@ class Anisette:
     def __init__(
         self,
         url: str = "https://ani.sidestore.io",
+        serial: str | None = None,
         user: UUID | None = None,
         device: UUID | None = None,
+        session: Session | None = None,
     ):
+        super().__init__(session)
+
         self.url = url
+        self._serial = serial
 
         self.user_id = str(user).upper() \
                        if user is UUID \
@@ -30,41 +36,30 @@ class Anisette:
                          if device is UUID \
                          else str(uuid4()).upper()
 
-        self._session = None
         self._data = None
         self._last = None
 
     def __repr__(self):
-        return f"Anisette({self.url!r})"
+        return f"Anisette({self.url!r}{", " + "'" + self._serial + "'" if self._serial is not None else ""})"
+
+    def _get_data(self) -> dict:
+        self._data = self.session.get(self.url, verify=False).json()
+        self._last = datetime.now()
+        return self._data
 
     @property
-    def session(self) -> Session:
-        if self._session is None:
-            self._session = Session()
-        return self._session
-
-    @session.setter
-    def session(self, new: Session):
-        self._session = new
-
-    def _get_data(self):
-        d = self.session.get(self.url, verify=False).json()
-        self._last = datetime.now()
-        return d
+    def last(self) -> datetime:
+        if self._last is None: self._data = self._get_data()
+        return self._last or datetime.now()
 
     @property
     def data(self) -> dict[str, str]:
-        if self._data is None:
-            self._data = self._get_data()
-            return self._data
-        n = datetime.now()
-        if (n.timestamp() - self._last.timestamp()) > 30:
-            self._data = self._get_data()
+        if self._data is None or (datetime.now().timestamp() - self.last.timestamp()) > 30: return self._get_data()
         return self._data
 
     @property
     def timestamp(self) -> str:
-        return self.data['X-Apple-I-Client-Time']
+        return datetime.strftime(self.last, '%Y-%m-%dT%H:%M:%SZ') or self.data['X-Apple-I-Client-Time']
 
     @property
     def timezone(self) -> str:
@@ -80,8 +75,7 @@ class Anisette:
 
     @property
     def local_user(self):
-        return self.data['X-Apple-I-MD-LU']
-        #b64encode(self.user_id.encode()).decode()
+        return b64encode(self.user_id.encode()).decode()
 
     @property
     def machine(self) -> str:
@@ -93,18 +87,21 @@ class Anisette:
 
     @property
     def serial(self) -> str:
-        return self.data['X-Apple-I-SRL-NO']
+        return self._serial or self.data['X-Apple-I-SRL-NO']
+
+    @serial.setter
+    def serial(self, new: str):
+        self._serial = new
 
     def build_client(self, device: str, app: str) -> str:
         os = "Windows" if device == "PC" else "macOS"
-        ov = "6.2(0,0);9200" if device == "PC" else "13.1;22C65"
+        ov = "6.2(0,0);9200" if device == "PC" else "15.2;24C5089c"
         bu = "com.apple."
         bu += "dt.Xcode" if app == "Xcode" else "iCloud"
         av = "3594.4.19" if app == "Xcode" else "7.21"
 
         akbundle = "com.apple.AuthKit"
-        if os == "Windows":
-            akbundle += "Win"
+        if os == "Windows": akbundle += "Win"
         akversion = "1"
 
         return f"<{device}> <{os};{ov}> <{akbundle}/{akversion} ({bu}/{av})>"
@@ -123,14 +120,14 @@ class Anisette:
             "X-Apple-I-MD-LU": self.local_user,
             "X-Apple-I-MD-M": self.machine,
             "X-Apple-I-MD-RINFO": self.router,
-            "X-Mme-Device-Id": self.data["X-Mme-Device-Id"],
+            "X-Mme-Device-Id": self.local_user,
             "X-Apple-I-SRL-NO": self.serial
         }
         if client:
             h |= {
                 "X-Mme-Client-Info": self.client,
                 "X-Apple-App-Info": "com.apple.gs.xcode.auth",
-                "X-Xcode-Version": "11.2 (11B41}"
+                "X-Xcode-Version": "16.0 (16A242d}"
             }
         return h
 

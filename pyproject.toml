@@ -4,9 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "grandslam"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="JJTech0130", email="jjtech@jjtech.dev" },
+  { name="nythepegasus", email="me@nythepegas.us" },
 ]
 description = "A package for communicating with Apple's Grand Slam Authentication."
 readme = "README.md"
@@ -21,11 +22,12 @@ dependencies = [
   "cryptography",
   "srp",
   "pbkdf2",
+  "requests",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/JJTech0130/grandslam"
-"Bug Tracker" = "https://github.com/JJTech0130/grandslam/issues"
+"Homepage" = "https://github.com/nythepegasus/grandslam"
+"Bug Tracker" = "https://github.com/nythepegasus/grandslam/issues"
 
 [project.scripts]
-grandslam = "grandslam.cli:main"
+grandslam = "grandslam.auth:main"
