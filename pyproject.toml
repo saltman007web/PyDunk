@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "grandslam"
-version = "0.2.0"
+name = "PyDunk"
+version = "0.0.1"
 authors = [
-  { name="JJTech0130", email="jjtech@jjtech.dev" },
   { name="nythepegasus", email="me@nythepegas.us" },
+  { name="JJTech0130", email="jjtech@jjtech.dev" },
 ]
-description = "A package for communicating with Apple's Grand Slam Authentication."
+description = "A package for communicating with Apple's Grand Slam Authentication and relating APIs."
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
@@ -30,4 +30,4 @@ dependencies = [
 "Bug Tracker" = "https://github.com/nythepegasus/grandslam/issues"
 
 [project.scripts]
-grandslam = "grandslam.auth:main"
+grandslam = "grandslam:main"
