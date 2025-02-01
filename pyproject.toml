@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/nythepegasus/grandslam"
-"Bug Tracker" = "https://github.com/nythepegasus/grandslam/issues"
+"Homepage" = "https://github.com/nythepegasus/PyDunk"
+"Bug Tracker" = "https://github.com/nythepegasus/PyDunk/issues"
 
 [project.scripts]
 grandslam = "grandslam:main"
