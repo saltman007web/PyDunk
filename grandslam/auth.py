@@ -1,13 +1,16 @@
 import hmac
+import json
 import urllib3
 from pprint import pp
 import plistlib as plist
 from hashlib import sha256
 from base64 import b64encode
+from datetime import datetime
 
 from .anisette import Anisette
 from .xcode import XcodeSession
 from .common import SessionProvider
+from .models import GSAuthToken, GSAuthTokens
 
 from requests import Session, Response
 from srp._pysrp import User, SHA256, NG_2048, rfc5054_enable, no_username_in_x
@@ -64,6 +67,11 @@ def decrypt_gcm(data: bytes, session_key: bytes) -> bytes | None:
 
 
 class GSAuth(SessionProvider):
+    _BASE_URL = "https://gsa.apple.com/grandslam/"
+    _INFO_BASE_URL = "https://gsas.apple.com/grandslam/"
+
+    _BASE_AUTH_URL = _BASE_URL + "GsService2"
+
     def __init__(
         self,
         anisette: Anisette | None = None,
@@ -71,52 +79,65 @@ class GSAuth(SessionProvider):
     ):
         super().__init__(session)
 
-        if anisette is None: anisette = Anisette(session=self.session)
-        self.anisette = anisette
-        self.session = self.anisette.session
+        if anisette is None: anisette = Anisette(session=self._session)
+        self._anisette = anisette
+        self._session = self._anisette._session
+        assert(self._session is self._anisette._session)
 
-    def authenticated_request(self, params: dict) -> dict:
-        url = "https://gsa.apple.com/GsService2"
-        body = {
+    @property
+    def _base_auth_headers(self) -> dict:
+        return self._anisette.headers(True) | {
+            "Content-Type": "text/x-xml-plist",
+            "Accept": "*/*",
+            "User-Agent": "akd/1.0 CFNetwork/978.0.7 Darwin/18.7.0",
+            "Accept-Language": "en-us",
+        }
+
+    def _auth_headers(self, identity_token: str) -> dict[str, str]:
+        return self._base_auth_headers | {"X-Apple-Identity-Token": identity_token}
+
+    @property
+    def _base_auth_body(self) -> dict:
+        return {
             "Header": {
                 "Version": "1.0.1",
             },
             "Request": {
-                "cpd": self.anisette.cpd
+                "cpd": self._anisette.cpd
             },
         }
 
-        body["Request"].update(params)
-        headers = {
-            "Content-Type": "text/x-xml-plist",
-            "Accept": "*/*",
-            "User-Agent": "akd/1.0 CFNetwork/978.0.7 Darwin/18.7.0",
-            "X-MMe-Client-Info": self.anisette.client,
-            "X-Apple-I-SRL-NO": self.anisette.serial,
-        }
-        resp = self.session.post(
-            url,
-            headers=headers,
-            data=plist.dumps(body),
+    def _base_auth_body_params(self, params: dict) -> dict:
+        r = self._base_auth_body
+        r["Request"] |= params
+        return r
+
+    def _user_info_request(self) -> dict:
+        resp = self._session.get(
+            self._BASE_AUTH_URL + "/fetchUserInfo",
+            headers=self._base_auth_headers,
+            verify=False,
+            timeout=5
+        )
+        if resp.ok:
+            return plist.loads(resp.content)
+        raise ValueError(f"Got {resp.status_code} with following content:\n{resp.content!r}")
+
+    def _authenticated_request(self, params: dict) -> dict:
+        resp = self._session.post(
+            self._BASE_AUTH_URL,
+            headers=self._base_auth_headers,
+            data=plist.dumps(self._base_auth_body_params(params)),
             verify=False,
             timeout=5,
         )
         return plist.loads(resp.content)["Response"]
 
-    def _auth_headers(self, identity_token: str) -> dict[str, str]:
-        return {
-            "Content-Type": "text/x-xml-plist",
-            "User-Agent": "Xcode",
-            "Accept": "text/x-xml-plist",
-            "Accept-Language": "en-us",
-            "X-Apple-Identity-Token": identity_token,
-        }
-
-    def trusted_2fa(self, dsid: str, idms_token: str) -> Response | None:
+    def _trusted_2fa(self, dsid: str, idms_token: str) -> Response | None:
         identity_token = b64encode((f"{dsid}:{idms_token}".encode())).decode()
         headers = self._auth_headers(identity_token)
-        headers |= self.anisette.headers(True)
-        self.session.get(
+        headers |= self._anisette.headers(True)
+        self._session.get(
             "https://gsa.apple.com/auth/verify/trusteddevice",
             headers=headers,
             verify=False,
@@ -126,7 +147,7 @@ class GSAuth(SessionProvider):
         code = int(input("Enter 2FA code: "))
         headers["security-code"] = f"{code}"
 
-        resp = self.session.get(
+        resp = self._session.get(
             "https://gsa.apple.com/grandslam/GsService2/validate",
             headers=headers,
             verify=False,
@@ -137,37 +158,41 @@ class GSAuth(SessionProvider):
         print("2FA successful")
         return r
 
-    def sms_2fa(self, dsid: str, idms_token: str) -> Response | None:
+    def _sms_2fa(self, dsid: str, idms_token: str) -> Response | None:
         identity_token = b64encode((f"{dsid}:{idms_token}".encode())).decode()
         headers = self._auth_headers(identity_token)
-        headers |= self.anisette.headers(True)
-        body = {"phoneNumber": {"id": 1}, "mode": "sms"}
-        self.session.put(
-            "https://gsa.apple.com/auth/verify/phone/",
-            data=plist.dumps(body),
-            headers=headers,
-            verify=False,
-            timeout=5,
-        )
+        headers |= self._anisette.headers(True)
+        headers["Accept"] = 'application/json, text/javascript, */*; q=0.01'
+        headers["Content-Type"] = 'application/json'
+        self._session.get("https://gsa.apple.com/auth", headers=headers, verify=False, timeout=5)
 
         code = int(input("Enter 2FA code: "))
-        body["securityCode"] = {"code": f"{code}"}
+        body = {"phoneNumber": {"id": 1}, "securityCode": {"code": f"{code}"}, "mode": "sms"}
+        #self._session.put(
+        #    "https://gsa.apple.com/auth/verify/phone/",
+        #    data=plist.dumps(body),
+        #    headers=headers,
+        #    verify=False,
+        #    timeout=5,
+        #)
 
-        resp = self.session.post(
+        resp = self._session.post(
             "https://gsa.apple.com/auth/verify/phone/securitycode",
-            data=plist.dumps(body),
+            data=json.dumps(body).replace(" ", ""),
             headers=headers,
             verify=False,
             timeout=5
         )
-        if resp.ok: print("2FA successful")
-        return resp
+        if resp.ok:
+            print("2FA successful")
+            return resp
+        raise ValueError(resp.content)
     
     def authenticate(self, username: str, password: str) -> dict | tuple[dict, Response | None]:
         usr = User(username, bytes(), hash_alg=SHA256, ng_type=NG_2048)
         _, A = usr.start_authentication()
 
-        r = self.authenticated_request({
+        r = self._authenticated_request({
             "A2k": A,
             "ps": ["s2k", "s2k_fo"],
             "u": username,
@@ -180,7 +205,7 @@ class GSAuth(SessionProvider):
         usr.p = encrypt_password(password, r["s"], r["i"])
         M = usr.process_challenge(r["s"], r["B"])
         if M is None: raise ValueError(f"Failed to process challenge for {username!r}!")
-        r = self.authenticated_request({
+        r = self._authenticated_request({
             "c": r["c"],
             "M1": M,
             "u": username,
@@ -199,12 +224,12 @@ class GSAuth(SessionProvider):
         if t == "trustedDeviceSecondaryAuth":
             which = input("Type SMS to use SMS: ")
             if which == "SMS":
-                auth = self.sms_2fa
+                auth = self._sms_2fa
             else:
-                auth = self.trusted_2fa
+                auth = self._trusted_2fa
         elif t == "secondaryAuth":
             print("SMS authentication required")
-            auth = self.sms_2fa
+            auth = self._sms_2fa
         elif t != "":
             raise ValueError(f"Unknown auth value {t}")
         else:
@@ -212,7 +237,7 @@ class GSAuth(SessionProvider):
             return spd
         return (spd, auth(spd['adsid'], spd['GsIdmsToken']))
 
-    def make_app_checksum(self, app_name: str, session_key: bytes | None, dsid: str | None) -> bytes | None:
+    def _make_app_checksum(self, app_name: str, session_key: bytes | None, dsid: str | None) -> bytes | None:
         if not session_key or not dsid: return
         hmac_ctx = hmac.new(session_key, digestmod=sha256)
         for s in ["apptokens", dsid, app_name]: hmac_ctx.update(s.encode("utf-8"))
@@ -222,23 +247,24 @@ class GSAuth(SessionProvider):
         app = "com.apple.gs.xcode.auth"
         spd_call = self.authenticate(username, password)
         spd = spd_call if isinstance(spd_call, dict) else spd_call[0]
-        checksum = self.make_app_checksum(app, spd['sk'], spd['adsid'])
+        checksum = self._make_app_checksum(app, spd['sk'], spd['adsid'])
         params = {
             "app": [app],
             "c": spd['c'],
             "checksum": checksum,
-            "cpd": self.anisette.cpd,
+            "cpd": self._anisette.cpd,
             "o": "apptokens",
             "t": spd['GsIdmsToken'],
             "u": spd['adsid']
         }
-        r = self.authenticated_request(params)
+        r = self._authenticated_request(params)
+        if check_error(r): raise ValueError(f"Error authenticating: {r}")
         encrypted_token = decrypt_gcm(r['et'], spd['sk'])
         if encrypted_token:
-            print("Xcode token:")
-            resp = plist.loads(plist.PLISTHEADER + encrypted_token)
-            pp(resp)
-            return (spd, XcodeSession(spd['adsid'], resp['t'][app]['token'], self.anisette))
+            #print("Xcode token:")
+            resp = GSAuthTokens(plist.loads(plist.PLISTHEADER + encrypted_token)['t']).tokens[0]
+            #pp(resp)
+            return (spd, XcodeSession(spd['adsid'], resp, self._anisette))
         return (spd, r)
 
 
@@ -250,7 +276,7 @@ def main() -> tuple[GSAuth, dict | tuple[dict, Response | None]]:
     password = os.environ.get("APPLE_ID_PASSWORD")
     if not password: password = getpass("Password: ")
     serial = os.environ.get("APPLE_SERIAL")
-    ani = Anisette(serial=serial)
+    ani = Anisette(url="https://ani.npeg.us", serial=serial)
     auth = GSAuth(ani)
     return (auth, auth.fetch_xcode_token(username, password))
 

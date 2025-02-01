@@ -43,7 +43,7 @@ class Anisette(SessionProvider):
         return f"Anisette({self.url!r}{", " + "'" + self._serial + "'" if self._serial is not None else ""})"
 
     def _get_data(self) -> dict:
-        self._data = self.session.get(self.url, verify=False).json()
+        self._data = self._session.get(self.url, verify=False).json()
         self._last = datetime.now()
         return self._data
 

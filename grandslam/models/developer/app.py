@@ -57,13 +57,14 @@ class AppID:
 
     @classmethod
     def from_api(cls, data: dict):
+        #pp(data)
         name = data['name']
         identifier = data['appIdId']
         bundle = data['identifier']
         all_features = data['features']
         enabled_features = data['enabledFeatures'] if 'enabledFeatures' in data else []
         features = {feature: all_features[feature] for feature in enabled_features}
-        expiration = getattr(data, 'expirationDate', None)
+        expiration = data['expirationDate'] if 'expirationDate' in data else None
         return cls(name, identifier, bundle, expiration, features)
 
 

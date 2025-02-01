@@ -1,10 +1,12 @@
+import json
 from enum import Enum
 from pprint import pp
 import plistlib as plist
 from uuid import uuid4
 
-from .anisette import Anisette
+from .auth import Anisette
 from .common import SessionProvider
+from .models import GSAuthToken, GSAuthTokens
 from .models.developer import Account, AppID, AppGroup, Device, Team
 
 
@@ -83,19 +85,20 @@ class CertificateFieldFilter:
 
 
 class XcodeSession(SessionProvider):
-    BASE_URL = "https://developerservices2.apple.com/services/QH65B2/"
-    SERVICES_BASE_URL = "https://developerservices2.apple.com/services/v1/"
+    _BASE_URL = "https://developerservices2.apple.com/services/QH65B2/"
+    _SERVICES_BASE_URL = "https://developerservices2.apple.com/services/v1/"
 
     def __init__(
         self,
         dsid: str,
-        auth_token: str,
-        anisette: Anisette,
+        auth_token: str | GSAuthToken,
+        anisette: Anisette = Anisette(),
     ):
         self.dsid = dsid
-        self.auth_token = auth_token
-        self.anisette = anisette
-        self.session = self.anisette.session
+        self.auth_token = auth_token.token if isinstance(auth_token, GSAuthToken) else auth_token
+        self._anisette = anisette
+        self._session = self._anisette._session
+        self._session.verify = False
 
         self._account = None
         self._team = None
@@ -104,28 +107,47 @@ class XcodeSession(SessionProvider):
         self._app_groups = []
 
     def __repr__(self):
-        return f"XcodeSession({self.dsid!r}, {self.auth_token!r}, {self.anisette!r})"
+        return f"XcodeSession({self.dsid!r}, {self.auth_token!r}, {self._anisette!r})"
 
-    def send_request_with_url(self, url: str, body: dict | None = None, params: dict | None = None) -> dict:
-        if body is None: body = {}
+    @property
+    def _base_headers(self) -> dict:
+        headers = {
+            "User-Agent": "Xcode",
+            "Accept-Language": "en-us",
+            "X-Apple-I-Identity-Id": self.dsid,
+            "X-Apple-GS-Token": self.auth_token,
+        }
+        return headers | self._anisette.headers(True)
+
+    @property
+    def _base_body(self) -> dict:
+        if self._team is not None:
+            return {"teamId": self.team.identifier}
+        return {}
+
+    def _json_request_with_url(self, url: str, body: dict | None = None) -> dict:
+        headers = self._base_headers | {
+            "Accept": "application/vnd.api+json",
+            "Content-Type": "application/vnd.api+json",
+            "X-HTTP-Method-Override": "GET",
+        }
+        if body:
+            return self._session.post(url, data=json.dumps(body).replace(" ", ""), headers=headers).json()
+        return self._session.post(url, headers=headers).json()
+
+    def _plist_request_with_url(self, url: str, body: dict | None = None, params: dict | None = None) -> dict:
+        body = self._base_body if body is None else body | self._base_body
         if params is None: params = {}
         body |= {
             "clientId": "XABBG36SBA",
             "protocolVersion": "A1234",
             "requestId": str(uuid4()).upper(),
         }
-        headers = {
-            "Content-Type": "text/x-xml-plist",
-            "User-Agent": "Xcode",
+        headers = self._base_headers | {
             "Accept": "text/x-xml-plist",
-            "Accept-Language": "en-us",
+            "Content-Type": "text/x-xml-plist",
         }
-        headers |= self.anisette.headers(True)
-        headers |= {
-            "X-Apple-I-Identity-Id": self.dsid,
-            "X-Apple-GS-Token": self.auth_token,
-        }
-        resp = self.session.post(
+        resp = self._session.post(
             url,
             headers=headers,
             params=params,
@@ -137,89 +159,86 @@ class XcodeSession(SessionProvider):
             return resp
 
     def refresh_account(self):
-        self._fetch_account()
+        return self._fetch_account()
 
     @property
     def account(self) -> Account:
-        if self._account is None: return self._fetch_account()
+        if self._account is None: return self.refresh_account()
         return self._account
 
     def _fetch_account(self) -> Account:
         self._account = Account.from_api(
-            self.send_request_with_url(self.BASE_URL + "viewDeveloper.action")['developer']
+            self._plist_request_with_url(self._BASE_URL + "viewDeveloper.action")['developer']
         )
         return self._account
 
     def refresh_team(self):
-        self._fetch_team()
+        return self._fetch_team()
 
     @property
     def team(self) -> Team:
-        if self._team is None: return self._fetch_team()
+        if self._team is None: return self.refresh_team()
         return self._team
 
     def _fetch_team(self) -> Team:
         self._team = Team.from_api_with_account(
             self.account,
-            self.send_request_with_url(self.BASE_URL + "listTeams.action")['teams'][0]
+            self._plist_request_with_url(self._BASE_URL + "listTeams.action")['teams'][0]
         )
         return self._team
 
     def refresh_devices(self):
-        self._fetch_devices_for_team()
+        return self._fetch_devices_for_team()
 
     @property
     def devices(self):
-        if len(self._devices) == 0: self._devices = self._fetch_devices_for_team()
+        if len(self._devices) == 0: self._devices = self.refresh_devices()
         return self._devices
 
     def _fetch_devices_for_team(self):
-        url = self.BASE_URL + "ios/listDevices.action"
-        return [Device.from_api(d)
-                for d in self.send_request_with_url(url, {"teamId": self.team.identifier})['devices']]
+        url = self._BASE_URL + "ios/listDevices.action"
+        return [Device.from_api(d) for d in self._plist_request_with_url(url)['devices']]
 
     def refresh_app_ids(self):
-        self._fetch_app_ids()
+        return self._fetch_app_ids()
 
     @property
     def app_ids(self) -> list[AppID]:
-        if len(self._app_ids) == 0: return self._fetch_app_ids()
+        if len(self._app_ids) == 0: return self.refresh_app_ids()
         return self._app_ids
 
     def _fetch_app_ids(self):
-        url = self.BASE_URL + "ios/listAppIds.action"
-        app_ids = self.send_request_with_url(url, {
-                             "teamId": self.team.identifier,
-                             "urlEncodedParameters": "include=profiles",
-                         })
-        pp(app_ids.keys())
+        url = self._BASE_URL + "ios/listAppIds.action"
+        app_ids = self._plist_request_with_url(url, {"teamId": self.team.identifier})
         self._app_ids = [AppID.from_api(d) for d in app_ids['appIds']]
         return self._app_ids
 
     def refresh_app_groups(self):
-        self._fetch_app_groups_for_team()
+        return self._fetch_app_groups_for_team()
 
     @property
     def app_groups(self) -> list[AppGroup]:
-        if len(self._app_groups) == 0: return self._fetch_app_groups_for_team()
+        if len(self._app_groups) == 0: return self.refresh_app_groups()
         return self._app_groups
 
     def _fetch_app_groups_for_team(self) -> list[AppGroup]:
-        self._app_groups = [AppGroup.from_api(g) for g in self.send_request_with_url(
-            self.BASE_URL + "ios/listApplicationGroups.action",
-            {"teamId": self.team.identifier}
-        )['applicationGroupList']]
+        self._app_groups = [AppGroup.from_api(g) for g in self._plist_request_with_url(self._BASE_URL + "ios/listApplicationGroups.action")['applicationGroupList']]
         return self._app_groups
 
-    def fetch_profiles_for_team(self):
-        return self.send_request_with_url(
-            self.BASE_URL + "ios/listProfiles.action",
+    def fetch_all_for_team(self):
+        return self._json_request_with_url(
+            self._SERVICES_BASE_URL + "profiles",
             {
-                "teamId": self.team.identifier,
-                "include": ProfileIncludeFilter.entitlements(),
-                "fields[certificates]": CertificateFieldFilter.default(),
-                "fields[devices]": "name,udid,addedDate",
-                "fields[bundleIds]": "name,identifier,bundleType,platform,wildcard,dateModified,dateCreated,seedId"
+                "urlEncodedQueryParams": f"teamId={self.team.identifier}&include=bundleId,certificates,devices&limit=200"
             }
         )
+
+if __name__ == '__main__':
+    import os
+    from getpass import getpass
+    adsid = os.environ.get("APPLE_DSID")
+    if not adsid: adsid = input("Apple DSID: ")
+    token = os.environ.get("APPLE_XCODE_TOKEN")
+    if not token: token = getpass("'com.apple.gs.xcode.auth' token: ")
+    x = XcodeSession(adsid, token)
 
