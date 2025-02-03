@@ -10,7 +10,7 @@ from datetime import datetime
 from ..anisette import Anisette
 from ..xcode import XcodeSession
 from ..common import SessionProvider
-from ..models import GSAuthToken, GSAuthTokens
+from .models import GSAuthToken, GSAuthTokens
 from .utils import check_error, encrypt_password, decrypt_gcm, decrypt_cbc
 
 from requests import Session, Response
