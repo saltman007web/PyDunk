@@ -13,7 +13,7 @@ from .common import SessionProvider
 from .models import GSAuthToken, GSAuthTokens
 
 from requests import Session, Response
-from srp._pysrp import User, SHA256, NG_2048, rfc5054_enable, no_username_in_x
+from srp import User, SHA256, NG_2048, rfc5054_enable, no_username_in_x
 from pbkdf2 import PBKDF2
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -276,7 +276,7 @@ def main() -> tuple[GSAuth, dict | tuple[dict, Response | None]]:
     password = os.environ.get("APPLE_ID_PASSWORD")
     if not password: password = getpass("Password: ")
     serial = os.environ.get("APPLE_SERIAL")
-    ani = Anisette(url="https://ani.npeg.us", serial=serial)
+    ani = Anisette(serial=serial)
     auth = GSAuth(ani)
     return (auth, auth.fetch_xcode_token(username, password))
 
