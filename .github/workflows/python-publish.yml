@@ -7,7 +7,23 @@ on:
 
 jobs:
  deploy: action/publish
-  runs-on: ubuntu-latest
+  runs-on: pytest
+    - name: Run tests with PyTest
+      uses: pyrunit/pytest-action@v1.0.0
+      with: 
+  source: pyrunit/pytest
+    # PyTest configuration file path (.ini).
+  configuration: 
+    # Indicates if the tests will run using an specific conda environment.
+    useConda: true
+    # Name of the conda environment to use. Required if useConda is true.
+    condaEnvName: python-publish
+    # Folder where test are placed. Defaults to tests.
+    testFolder: /.github/tests
+    version: #6.2.5
+    args: -q, for instance `-q --param1=value1 --param2=value2` XML.
+    outputFile: ${{ github.workspace }}/test-results/results.xml
+          
   architecture:
            - name: debootstrap
              uses: NekoSekaiMoe/debchroot@v1
