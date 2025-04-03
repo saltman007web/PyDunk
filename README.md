@@ -1,3 +1,5 @@
+[![Upload Python Package](https://github.com/saltman007web/PyDunk/actions/workflows/python-publish.yml/badge.svg?branch=main&event=deployment)](https://github.com/saltman007web/PyDunk/actions/workflows/python-publish.yml)
+
 # PyDunk
 A package for communicating with Apple's Grand Slam Authentication.
 
