@@ -8,23 +8,20 @@ on:
 jobs:
   deploy: 
     runs-on: ${{ ubuntu-latest }}
-    architecture: amd64
-     
-       permissions:
-           - name: Permissions Report
+      architecture: amd64
+     permissions: report
+           - name: permissions-report
              uses: wilsonwong1990/Org-reports-Actions@v1.2.1
-     id-token: 
-        - name: github-actions-github-apps-token
-          uses: hakadoriya-actions/create-github-app-token@v1.0.0
-      with:
-    # The Client ID of the GitHub App.
-      client-id: 
-    # The private key of the GitHub App.
-      private-key: 
-    # The expiry seconds of the JWT. 600 seconds maximum. (default: 600)
-      jwt-expiry-seconds: # optional, default is 600
-    # The request body for the API to get the access tokens. (default: "")
-      api-app-installations-access-tokens-request-body: # optional
+
+id-token: 
+     - uses: github-actions-github-apps-token
+       with: hakadoriya-actions/create-github-app-token@v1.0.0
+       client-id: #The Client ID of the GitHub App.
+       private-key: #The private key of the GitHub App.
+#The expiry seconds of the JWT. 600 seconds maximum. (default: 600)
+       jwt-expiry-seconds: # optional, default is 600
+#The request body for the API to get the access tokens. (default: "")
+       api-app-installations-access-tokens-request-body: # optional
           
      steps:
         - name: Set up architecture
