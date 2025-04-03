@@ -1,3 +1,4 @@
+
 name: Upload Python Package
 
 on:
@@ -5,24 +6,31 @@ on:
     types: [published]
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
+  deploy: amd64-release
+	 runs-on: ${{ ubuntu-latest }}
+  
+   
+architecture: amd64
+ permissions:
+  id-token: GitHub-DeploymentToken
+    
+steps:
+       - name: Set up architecture
+         run: |
+          sudo dpkg --add-architecture amd64
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib
+       - uses: actions/checkout@v3
+       - name: Set up Python
+         uses: actions/setup-python@v4
+         with:
           python-version: '3.10'
           cache: 'pip'
-      - name: Install dependencies
-        run: |
+       - name: Install dependencies
+         run: |
           python -m pip install --upgrade pip
           pip install -U hatchling
-      - name: Build ${{ github.event.repository.name }}
-        run: python -m hatchling build
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-
+       - name: Build ${{ github.event.repository.name }}
+         run: python -m hatchling build
+       - name: Publish package distributions to PyPI
+         uses: pypa/gh-action-pypi-publish@release/v1
