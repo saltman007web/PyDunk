@@ -8,7 +8,7 @@ on:
 jobs:
   deploy: 
     runs-on: ${{ ubuntu-latest }}
-      architecture: amd64
+      architecture: iOS-armv6
      permissions: report
            - name: permissions-report
              uses: wilsonwong1990/Org-reports-Actions@v1.2.1
