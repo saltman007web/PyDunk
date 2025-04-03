@@ -6,13 +6,20 @@ on:
     types: [published]
 
 jobs:
-  deploy: 
-    runs-on: ${{ ubuntu-latest }}
-      architecture: armv6
-     permissions: report
-           - name: permissions-report
-             uses: wilsonwong1990/Org-reports-Actions@v1.2.1
-
+ deploy: action/publish
+  runs-on: ubuntu-latest
+  architecture:
+           - name: debootstrap
+             uses: NekoSekaiMoe/debchroot@v1
+             with: arm64
+     # 
+       arch: arm64
+     #   
+       version: latest
+  
+permissions report:
+         - name: "permissions report"
+           uses: "wilsonwong1990/Org-reports-Actions@v1.2.1"
 id-token: 
      - uses: github-actions-github-apps-token
        with: hakadoriya-actions/create-github-app-token@v1.0.0
@@ -26,7 +33,7 @@ id-token:
      steps:
         - name: Set up architecture
           run: |
-           sudo dpkg --add-architecture amd64
+           sudo dpkg --add-architecture arch-arm64
            sudo apt-get update
            sudo apt-get install -y gcc-multilib g++-multilib
         - uses: actions/checkout@v3
