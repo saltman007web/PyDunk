@@ -8,29 +8,41 @@ on:
 jobs:
   deploy: 
     runs-on: ${{ ubuntu-latest }}
-  
-   
-architecture: amd64
- permissions:
-  id-token: GitHub-DeploymentToken
-    
-steps:
-       - name: Set up architecture
-         run: |
-          sudo dpkg --add-architecture amd64
-          sudo apt-get update
-          sudo apt-get install -y gcc-multilib g++-multilib
-       - uses: actions/checkout@v3
-       - name: Set up Python
-         uses: actions/setup-python@v4
-         with:
+    architecture: amd64
+     
+       permissions:
+           - name: Permissions Report
+             uses: wilsonwong1990/Org-reports-Actions@v1.2.1
+     id-token: 
+        - name: github-actions-github-apps-token
+          uses: hakadoriya-actions/create-github-app-token@v1.0.0
+      with:
+    # The Client ID of the GitHub App.
+      client-id: 
+    # The private key of the GitHub App.
+      private-key: 
+    # The expiry seconds of the JWT. 600 seconds maximum. (default: 600)
+      jwt-expiry-seconds: # optional, default is 600
+    # The request body for the API to get the access tokens. (default: "")
+      api-app-installations-access-tokens-request-body: # optional
+          
+     steps:
+        - name: Set up architecture
+          run: |
+           sudo dpkg --add-architecture amd64
+           sudo apt-get update
+           sudo apt-get install -y gcc-multilib g++-multilib
+        - uses: actions/checkout@v3
+        - name: Set up Python
+          uses: actions/setup-python@v4
+          with:
           python-version: '3.10'
           cache: 'pip'
-       - name: Install dependencies
-         run: |
-          python -m pip install --upgrade pip
-          pip install -U hatchling
-       - name: Build ${{ github.event.repository.name }}
-         run: python -m hatchling build
-       - name: Publish package distributions to PyPI
-         uses: pypa/gh-action-pypi-publish@release/v1
+        - name: Install dependencies
+          run: |
+           python -m pip install --upgrade pip
+           pip install -U hatchling
+        - name: Build ${{ github.event.repository.name }}
+          run: python -m hatchling build
+        - name: Publish package distributions to PyPI
+          uses: pypa/gh-action-pypi-publish@release/v1
