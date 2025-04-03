@@ -7,63 +7,16 @@ from hashlib import sha256
 from base64 import b64encode
 from datetime import datetime
 
-from .anisette import Anisette
-from .xcode import XcodeSession
-from .common import SessionProvider
+from ..anisette import Anisette
+from ..xcode import XcodeSession
+from ..common import SessionProvider
 from .models import GSAuthToken, GSAuthTokens
+from .utils import check_error, encrypt_password, decrypt_gcm, decrypt_cbc
 
 from requests import Session, Response
-from srp._pysrp import User, SHA256, NG_2048, rfc5054_enable, no_username_in_x
-from pbkdf2 import PBKDF2
-from cryptography.hazmat.primitives.ciphers import Cipher
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.ciphers.algorithms import AES
-from cryptography.hazmat.primitives.ciphers.modes import CBC
-from cryptography.hazmat.primitives.padding import PKCS7 as padPKCS7
-
-rfc5054_enable()
-no_username_in_x()
+from srp import User, SHA256, NG_2048
 
 urllib3.disable_warnings()
-
-def check_error(r: dict) -> bool:
-    status = r["Status"] if "Status" in r else r
-    if status["ec"] != 0:
-        print(f"Error {status['ec']}: {status['em']}")
-        return True
-    return False
-
-def encrypt_password(password: str, salt: bytes, iterations: int) -> bytes:
-    p = sha256(password.encode("utf-8")).digest()
-    return PBKDF2(p, salt, iterations, sha256).read(32)
-
-def create_session_key(usr: User, name: str) -> bytes:
-    k = usr.get_session_key()
-    if k is None: raise ValueError("Expected a session key from User object!")
-    return hmac.new(k, name.encode(), sha256).digest()
-
-def decrypt_cbc(usr: User, data: bytes) -> bytes:
-    extra_data_key = create_session_key(usr, "extra data key:")
-    extra_data_iv  = create_session_key(usr, "extra data iv:")
-    extra_data_iv  = extra_data_iv[:16]
-
-    cipher = Cipher(AES(extra_data_key), CBC(extra_data_iv))
-    decryptor = cipher.decryptor()
-    data = decryptor.update(data) + decryptor.finalize()
-    padder = padPKCS7(128).unpadder()
-    return padder.update(data) + padder.finalize()
-
-def decrypt_gcm(data: bytes, session_key: bytes) -> bytes | None:
-    if not session_key or len(data) < 35: return
-    version_size, iv_size, tag_size = 3, 16, 16
-    decrypted_size = len(data) - (version_size + iv_size + tag_size)
-    if decrypted_size <= 0: return
-    version = data[:version_size]
-    iv = data[version_size:version_size + iv_size]
-    cipher = data[version_size + iv_size:-tag_size]
-    tag = data[-tag_size:]
-    try: return AESGCM(session_key).decrypt(iv, cipher + tag, version)
-    except: return
 
 
 class GSAuth(SessionProvider):
@@ -112,10 +65,11 @@ class GSAuth(SessionProvider):
         r["Request"] |= params
         return r
 
-    def _user_info_request(self) -> dict:
+    def _user_info_request(self, dsid: str) -> dict:
+        headers = {"X-Apple-I-Identity-Id": dsid}
         resp = self._session.get(
             self._BASE_AUTH_URL + "/fetchUserInfo",
-            headers=self._base_auth_headers,
+            headers=self._base_auth_headers | headers,
             verify=False,
             timeout=5
         )
@@ -266,19 +220,4 @@ class GSAuth(SessionProvider):
             #pp(resp)
             return (spd, XcodeSession(spd['adsid'], resp, self._anisette))
         return (spd, r)
-
-
-def main() -> tuple[GSAuth, dict | tuple[dict, Response | None]]:
-    import os
-    from getpass import getpass
-    username = os.environ.get("APPLE_ID")
-    if not username: username = input("Apple ID: ")
-    password = os.environ.get("APPLE_ID_PASSWORD")
-    if not password: password = getpass("Password: ")
-    serial = os.environ.get("APPLE_SERIAL")
-    ani = Anisette(url="https://ani.npeg.us", serial=serial)
-    auth = GSAuth(ani)
-    return (auth, auth.fetch_xcode_token(username, password))
-
-if __name__ == "__main__": main()
 

@@ -1,7 +1,5 @@
 from datetime import datetime
 
-from . import developer
-
 
 class GSAuthToken:
     def __init__(
