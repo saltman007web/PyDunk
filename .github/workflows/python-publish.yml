@@ -2,12 +2,13 @@
 name: Upload Python Package
 
 on:
-  release:
-    types: [published]
+ - main
+   release:
+      types: [published]
 
 jobs:
- deploy: action/publish
-  runs-on: pytest
+ deploy: .github/workflows/python-publish.yml
+ runs-on: Pytest
     - name: Run tests with PyTest
       uses: pyrunit/pytest-action@v1.0.0
       with: 
@@ -17,7 +18,7 @@ jobs:
     # Indicates if the tests will run using an specific conda environment.
     useConda: true
     # Name of the conda environment to use. Required if useConda is true.
-    condaEnvName: python-publish
+    condaEnvName: python
     # Folder where test are placed. Defaults to tests.
     testFolder: /.github/tests
     version: #6.2.5
